@@ -1,0 +1,76 @@
+name: Deploy Dev Preview
+
+on:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  preview:
+    if: contains(github.event.pull_request.labels.*.name, 'deploy-dev')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Compute preview tag
+        id: tag
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          base_version=$(git show origin/main:.release-please-manifest.json | python -c 'import json,sys; print(json.load(sys.stdin).get(".", "0.1.0"))')
+          short_sha="${{ github.event.pull_request.head.sha }}"
+          short_sha="${short_sha:0:7}"
+          preview_tag="v${base_version}-dev.${{ github.event.pull_request.number }}.sha.${short_sha}"
+          safe_version=$(echo "$preview_tag" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+          echo "preview_tag=$preview_tag" >> "$GITHUB_OUTPUT"
+          echo "promotion_branch=promote/dev/${safe_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch dev promotion PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/promote-environment.yml/dispatches" \
+            -f ref="main" \
+            -f "inputs[environment]=dev" \
+            -f "inputs[version]=${{ steps.tag.outputs.preview_tag }}" \
+            -f "inputs[auto-approve]=false" \
+            -f "inputs[merge]=false" \
+            -f "inputs[source]=pr-${{ github.event.pull_request.number }}"
+
+      - name: Resolve dev promotion PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          pr_url=""
+          for _ in $(seq 1 30); do
+            pr_url=$(gh pr list --repo "${{ github.repository }}" --head "${{ steps.tag.outputs.promotion_branch }}" --base main --json url --jq '.[0].url' || true)
+            if [ -n "$pr_url" ] && [ "$pr_url" != "null" ]; then
+              break
+            fi
+            sleep 4
+          done
+          echo "pr_url=${pr_url}" >> "$GITHUB_OUTPUT"
+
+      - name: Comment on source PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(cat <<EOF_BODY
+          Dev preview prepared.
+
+          - Preview tag: `${{ steps.tag.outputs.preview_tag }}`
+          - Dev promotion PR: ${{ steps.pr.outputs.pr_url || 'pending' }}
+          EOF_BODY
+          )
+          gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body "$body"

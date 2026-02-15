@@ -1,0 +1,73 @@
+name: Release Please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  release_please:
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - name: Run release-please
+        id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [release_please]
+    if: needs.release_please.outputs.release_created == 'true'
+    steps:
+      - name: Simulate image publish
+        run: |
+          echo "Published image tag: ${{ needs.release_please.outputs.tag_name }}"
+
+  promote_staging:
+    runs-on: ubuntu-latest
+    needs: [release_please, publish]
+    if: needs.publish.result == 'success'
+    steps:
+      - name: Dispatch staging promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/promote-environment.yml/dispatches" \
+            -f ref="main" \
+            -f "inputs[environment]=staging" \
+            -f "inputs[version]=${{ needs.release_please.outputs.tag_name }}" \
+            -f "inputs[auto-approve]=true" \
+            -f "inputs[merge]=true" \
+            -f "inputs[source]=release"
+
+  promote_prod:
+    runs-on: ubuntu-latest
+    needs: [release_please, promote_staging]
+    if: needs.promote_staging.result == 'success'
+    environment: production
+    steps:
+      - name: Dispatch prod promotion
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api \
+            --method POST \
+            "repos/${{ github.repository }}/actions/workflows/promote-environment.yml/dispatches" \
+            -f ref="main" \
+            -f "inputs[environment]=prod" \
+            -f "inputs[version]=${{ needs.release_please.outputs.tag_name }}" \
+            -f "inputs[auto-approve]=true" \
+            -f "inputs[merge]=true" \
+            -f "inputs[source]=release"

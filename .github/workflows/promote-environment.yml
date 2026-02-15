@@ -1,0 +1,95 @@
+name: Promote Environment
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+      version:
+        description: "Version/tag to promote"
+        required: true
+        type: string
+      auto-approve:
+        description: "Auto approve PR"
+        required: false
+        type: boolean
+        default: false
+      merge:
+        description: "Enable auto-merge"
+        required: false
+        type: boolean
+        default: false
+      source:
+        description: "Source context"
+        required: false
+        type: string
+        default: "manual"
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Update environment version file
+        run: |
+          python3 scripts/set_env_version.py "${{ inputs.environment }}" "${{ inputs.version }}"
+
+      - name: Compute promotion branch
+        id: meta
+        run: |
+          set -euo pipefail
+          safe_version=$(echo "${{ inputs.version }}" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')
+          echo "branch=promote/${{ inputs.environment }}/${safe_version}" >> "$GITHUB_OUTPUT"
+
+      - name: Create promotion PR
+        id: cpr
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ github.token }}
+          branch: ${{ steps.meta.outputs.branch }}
+          base: main
+          title: "chore(cd): promote ${{ inputs.environment }} to ${{ inputs.version }}"
+          body: |
+            Automated promotion PR.
+
+            - Environment: `${{ inputs.environment }}`
+            - Version: `${{ inputs.version }}`
+            - Source: `${{ inputs.source }}`
+          commit-message: "chore(cd): promote ${{ inputs.environment }} to ${{ inputs.version }}"
+          add-paths: |
+            environments/${{ inputs.environment }}.json
+
+      - name: Auto approve PR
+        if: steps.cpr.outputs.pull-request-number != '' && inputs.auto-approve
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr review "${{ steps.cpr.outputs.pull-request-number }}" --approve || true
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-number != '' && inputs.merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --squash --auto
+
+      - name: Summary
+        run: |
+          {
+            echo "## Promotion"
+            echo "- Environment: \\`${{ inputs.environment }}\\`"
+            echo "- Version: \\`${{ inputs.version }}\\`"
+            echo "- PR: ${{ steps.cpr.outputs.pull-request-url || 'none (no changes)' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
