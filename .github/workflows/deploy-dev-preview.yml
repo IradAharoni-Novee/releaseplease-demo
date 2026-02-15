@@ -34,7 +34,7 @@ jobs:
 
       - name: Dispatch dev promotion PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           gh api \
             --method POST \
@@ -49,7 +49,7 @@ jobs:
       - name: Resolve dev promotion PR
         id: pr
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           set -euo pipefail
           pr_url=""
@@ -64,7 +64,7 @@ jobs:
 
       - name: Comment on source PR
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           body=$(cat <<EOF_BODY
           Dev preview prepared.

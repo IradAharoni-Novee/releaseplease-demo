@@ -57,7 +57,7 @@ jobs:
         id: cpr
         uses: peter-evans/create-pull-request@v6
         with:
-          token: ${{ github.token }}
+          token: ${{ secrets.DEMO_GH_TOKEN || github.token }}
           branch: ${{ steps.meta.outputs.branch }}
           base: main
           title: "chore(cd): promote ${{ inputs.environment }} to ${{ inputs.version }}"
@@ -74,14 +74,14 @@ jobs:
       - name: Auto approve PR
         if: steps.cpr.outputs.pull-request-number != '' && inputs.auto-approve
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           gh pr review "${{ steps.cpr.outputs.pull-request-number }}" --approve || true
 
       - name: Enable auto-merge
         if: steps.cpr.outputs.pull-request-number != '' && inputs.merge
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           gh pr merge "${{ steps.cpr.outputs.pull-request-number }}" --squash --auto
 
