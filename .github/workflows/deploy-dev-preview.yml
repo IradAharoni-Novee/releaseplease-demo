@@ -24,7 +24,9 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          base_version=$(git show origin/main:.release-please-manifest.json | python -c 'import json,sys; print(json.load(sys.stdin).get(".", "0.1.0"))')
+          # Dev previews are independent of release-please state.
+          # Use main branch package version as the prerelease base.
+          base_version=$(git show origin/main:pyproject.toml | python3 -c 'import sys,tomllib; print(tomllib.loads(sys.stdin.read())["project"]["version"])')
           short_sha="${{ github.event.pull_request.head.sha }}"
           short_sha="${short_sha:0:7}"
           preview_tag="v${base_version}-dev.${{ github.event.pull_request.number }}.sha.${short_sha}"
@@ -42,8 +44,8 @@ jobs:
             -f ref="main" \
             -f "inputs[environment]=dev" \
             -f "inputs[version]=${{ steps.tag.outputs.preview_tag }}" \
-            -f "inputs[auto-approve]=false" \
-            -f "inputs[merge]=false" \
+            -f "inputs[auto-approve]=true" \
+            -f "inputs[merge]=true" \
             -f "inputs[source]=pr-${{ github.event.pull_request.number }}"
 
       - name: Resolve dev promotion PR
@@ -67,10 +69,10 @@ jobs:
           GH_TOKEN: ${{ secrets.DEMO_GH_TOKEN || github.token }}
         run: |
           body=$(cat <<EOF_BODY
-          Dev preview prepared.
+          Dev promotion triggered automatically.
 
           - Preview tag: `${{ steps.tag.outputs.preview_tag }}`
-          - Dev promotion PR: ${{ steps.pr.outputs.pr_url || 'pending' }}
+          - Dev promotion PR (auto-merge enabled): ${{ steps.pr.outputs.pr_url || 'pending' }}
           EOF_BODY
           )
           gh pr comment "${{ github.event.pull_request.number }}" --repo "${{ github.repository }}" --body "$body"
