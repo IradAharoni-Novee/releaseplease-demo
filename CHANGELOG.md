@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/IradAharoni-Novee/releaseplease-demo/compare/v0.2.0...v0.3.0) (2026-02-15)
+
+
+### Features
+
+* **main:** adding print ([#7](https://github.com/IradAharoni-Novee/releaseplease-demo/issues/7)) ([86576f3](https://github.com/IradAharoni-Novee/releaseplease-demo/commit/86576f32adc32c4913cc4184dd51f5e4299a05f5))
+
 ## [0.2.0](https://github.com/IradAharoni-Novee/releaseplease-demo/compare/v0.1.0...v0.2.0) (2026-02-15)
 
 
